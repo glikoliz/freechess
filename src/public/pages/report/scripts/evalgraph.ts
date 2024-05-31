@@ -10,7 +10,7 @@ let cursorImg: HTMLImageElement | null = null;
 async function drawEvaluationGraph() {
     const graphHeight = 80;
     const desiredGraphWidth = 350;
-    const maxEval = 500; // Looks good with maxEval 500, that's a range between -5.0 and 5.0 eval score
+    const maxEval = 700; // Looks good with maxEval 500-700
     const cpPerPixel = maxEval / (graphHeight / 2);
     let positions = reportResults?.positions!;
     let baseBarWidth = Math.floor(desiredGraphWidth / positions.length);
@@ -23,33 +23,36 @@ async function drawEvaluationGraph() {
     topLines = positions.map(position => position?.topLines?.find(line => line.id == 1));
 
     let cumulativeWidth = 0;
-    let points = [];
+    let points: { x: number, y: number }[] = [];
+
 
 
     for (let i = 0; i < topLines.length; i++) {
         let topLine = topLines[i];
         let evaluation = topLine?.evaluation;
         let currentBarWidth = baseBarWidth + Math.floor((i + 1) * extraWidthPerBar) - Math.floor(i * extraWidthPerBar);
-    
+
         let pointX = cumulativeWidth + currentBarWidth / 2;
         let pointY = graphHeight / 2;
-    
+
         if (evaluation?.type === "cp") {
             pointY = graphHeight / 2 - evaluation.value / cpPerPixel;
         } else if (evaluation?.type === "mate") {
-            pointY = evaluation.value >= 0 ? 0 : graphHeight;
+            console.log(evaluation)
+            pointY = evaluation.value > 0 ? 0 : graphHeight;
+            if (evaluation.value == 0) {
+                pointY = points[i - 1].y;
+            }
         }
-        
-        points.push({x: pointX, y: pointY});
-    
+
+        points.push({ x: pointX, y: pointY });
+
         cumulativeWidth += currentBarWidth;
     }
-    
+
     // Draw the filled area below the points
     evaluationGraphCtx.beginPath();
-    evaluationGraphCtx.moveTo(0, graphHeight);
-    evaluationGraphCtx.lineTo(0, points[0].y);
-    evaluationGraphCtx.lineTo(points[0].x, points[0].y);
+    evaluationGraphCtx.moveTo(points[0].x, graphHeight);
     points.forEach(point => {
         evaluationGraphCtx.lineTo(point.x, point.y);
     });
@@ -57,38 +60,44 @@ async function drawEvaluationGraph() {
     evaluationGraphCtx.closePath();
     evaluationGraphCtx.fillStyle = "#ffffff";
     evaluationGraphCtx.fill();
-    console.log("hello world!")
-    
-    // Draw points on top of bars
+
+    // Draws points of key moments in the game
     cumulativeWidth = 0;
-    for (let i = 0; i < topLines.length; i++) {
+    for (let i = 1; i < topLines.length; i++) {
         let topLine = topLines[i];
         let evaluation = topLine?.evaluation;
         let currentBarWidth = baseBarWidth + Math.floor((i + 1) * extraWidthPerBar) - Math.floor(i * extraWidthPerBar);
         let classification = positions[i]?.classification;
-        let classificationColour = classification ? classificationColours[classification] : "#000000"; // Default to black
-        let pointX = cumulativeWidth + currentBarWidth / 2;
-        let pointY;
+        let classificationColour = classification ? classificationColours[classification] : "#000000";
+
+        let prev_move = topLines[i - 1]?.evaluation.value ?? 0;
+        let curr_move = evaluation?.value ?? 0;
+
         if (evaluation?.type === "cp") {
-            if(classification === "great" || classification === "brilliant" || classification === "blunder")
-                {
-                    let height = graphHeight / 2 + evaluation?.value / cpPerPixel;
-                    pointY = boardFlipped ? height : graphHeight - height;
+            if (
+                (classification === "great" || classification === "brilliant" || classification === "blunder") ||
+                (
+                    (Math.abs(prev_move - curr_move) >= 0.5) &&
+                    (prev_move != curr_move) &&
+                    ((prev_move >= 0 && curr_move <= 0) || (prev_move <= 0 && curr_move >= 0)) ||
+                    ((prev_move === 0 && curr_move != 0) || (prev_move != 0 && curr_move === 0))
+                )
+            ) {
+                let pointY = points[i].y
+                let pointX = points[i].x
 
-                    // Draw the point
-                    evaluationGraphCtx.fillStyle = classificationColour;
-                    evaluationGraphCtx.beginPath();
-                    evaluationGraphCtx.arc(pointX, pointY, 4, 0, 2 * Math.PI); // Draw a circle with radius 4
-                    evaluationGraphCtx.fill();
-                }
+                evaluationGraphCtx.fillStyle = classificationColour;
+                evaluationGraphCtx.beginPath();
+                evaluationGraphCtx.arc(pointX, pointY, 4, 0, 2 * Math.PI); // Draw a circle with radius 4
+                evaluationGraphCtx.fill();
+            }
         }
-
         if (i === currentMoveIndex || i === hoverIndex) {
             let highlightColor = getSemiTransparentColor(classificationColour, 0.5);
+            let highlightX = points[i].x;
             evaluationGraphCtx.fillStyle = highlightColor;
-            evaluationGraphCtx.fillRect(cumulativeWidth, 0, currentBarWidth, graphHeight);
+            evaluationGraphCtx.fillRect(highlightX - currentBarWidth / 2, 0, currentBarWidth, graphHeight);
         }
-
         cumulativeWidth += currentBarWidth;
     }
 
@@ -98,14 +107,14 @@ async function drawEvaluationGraph() {
     evaluationGraphCtx.moveTo(0, graphHeight / 2);
     evaluationGraphCtx.lineTo(desiredGraphWidth, graphHeight / 2);
     evaluationGraphCtx.lineWidth = 1;
-    evaluationGraphCtx.strokeStyle = '#ff5555';
+    evaluationGraphCtx.strokeStyle = '#666360';
     evaluationGraphCtx.stroke();
 
     // Draw classification icon for hovered move
     cumulativeWidth = 0;
     for (let i = 0; i < topLines.length; i++) {
         let currentBarWidth = baseBarWidth + Math.floor((i + 1) * extraWidthPerBar) - Math.floor(i * extraWidthPerBar);
-    
+
         if (i === hoverIndex) {
             const classification = positions[i]?.classification;
             if (classification && classificationIcons[classification]) {
@@ -114,10 +123,8 @@ async function drawEvaluationGraph() {
                 let iconX = mouseX < iconSize ? mouseX : mouseX - iconSize - 2;
                 let iconY = mouseY < iconSize / 2 ? 0 : mouseY - iconSize / 2;
                 iconY = mouseY > graphHeight - iconSize / 2 ? graphHeight - iconSize : iconY;
-    
-                if (icon) {
 
-                    
+                if (icon) {
                     const canvasWidth = evaluationGraphCtx.canvas.width;
                     const canvasHeight = evaluationGraphCtx.canvas.height;
                     let speechBubble: any = new (window as any).SpeechBubble(evaluationGraphCtx);
@@ -149,7 +156,7 @@ async function drawEvaluationGraph() {
                         } else {
                             bubbleTop = mouseY + bubblePadding;
                         }
-                        
+
                         if (totalWidth > canvasWidth) {
                             bubbleLeft -= totalWidth - canvasWidth;
                         } else {
@@ -157,32 +164,32 @@ async function drawEvaluationGraph() {
                         }
                     }
 
-                    
+
                     if (bubbleLeft < 0) {
                         bubbleLeft = 0;
                     } else if (bubbleLeft + bubbleWidth > canvasWidth) {
                         bubbleLeft = canvasWidth - bubbleWidth;
                     }
-                    
+
                     if (bubbleTop < 0) {
                         bubbleTop = 0;
                     } else if (bubbleTop + bubbleHeight > canvasHeight) {
                         bubbleTop = canvasHeight - bubbleHeight;
                     }
-                    
+
                     speechBubble.panelBounds = new (window as any).SpeechBubble.Bounds(bubbleTop, bubbleLeft, bubbleWidth, bubbleHeight);
-                    
+
                     speechBubble.fontSize = 12;
-                    speechBubble.padding = 2; 
-                    speechBubble.cornerRadius = 2; 
-                    speechBubble.panelBorderWidth = 1; 
-                    speechBubble.panelBorderColor = "#000"; 
-                    speechBubble.fontColor = "#000"; 
-                    speechBubble.padding = bubblePadding; 
-                    speechBubble.font = "JetBrains Mono"; 
-                    speechBubble.panelFillColor = "rgba(255,255,255,0.7)"; 
-                    speechBubble.tailStyle = (window as any).SpeechBubble.TAIL_STRAIGHT; 
-                    
+                    speechBubble.padding = 2;
+                    speechBubble.cornerRadius = 2;
+                    speechBubble.panelBorderWidth = 1;
+                    speechBubble.panelBorderColor = "#000";
+                    speechBubble.fontColor = "#000";
+                    speechBubble.padding = bubblePadding;
+                    speechBubble.font = "JetBrains Mono";
+                    speechBubble.panelFillColor = "rgba(255,255,255,0.7)";
+                    speechBubble.tailStyle = (window as any).SpeechBubble.TAIL_STRAIGHT;
+
                     speechBubble.draw();
 
                     const imgX = bubbleLeft + bubbleGapX;
@@ -200,20 +207,20 @@ async function drawEvaluationGraph() {
         graphCanvas.addEventListener('click', (event: MouseEvent) => {
             const rect = graphCanvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
-            let cumulativeWidth = 0;
-            let clickedMoveIndex = 0;
+            let clickedMoveIndex = null;
 
-            for (let i = 0; i < positions.length; i++) {
-                let currentBarWidth = baseBarWidth + Math.floor((i + 1) * extraWidthPerBar) - Math.floor(i * extraWidthPerBar);
-                if (x < cumulativeWidth + currentBarWidth) {
+            for (let i = 0; i < points.length; i++) {
+                if (points[i].x && Math.abs(points[i].x - x) < baseBarWidth / 2) {
                     clickedMoveIndex = i;
                     break;
                 }
-                cumulativeWidth += currentBarWidth;
             }
 
-            traverseMoves(clickedMoveIndex - currentMoveIndex);
+            if (clickedMoveIndex !== null) {
+                traverseMoves(clickedMoveIndex - currentMoveIndex);
+            }
         });
+
 
         graphCanvas.addEventListener('mousemove', (event: MouseEvent) => {
             const rect = graphCanvas.getBoundingClientRect();
@@ -232,13 +239,14 @@ async function drawEvaluationGraph() {
             }
 
             hoverIndex = newHoverIndex;
-            drawEvaluationGraph();
+
+            drawEvaluationGraph(); //Redraws everything on every mouse move(even if you move it only by a pixel), probably not very good
             drawCursor();
         });
 
         graphCanvas.addEventListener('mouseout', () => {
-            hoverIndex = null;
             drawEvaluationGraph();
+            hoverIndex = null;
         });
 
         isNewGame = false;
@@ -249,13 +257,13 @@ function drawCursor() {
     loadSprite("crosshair.png").then(image => {
         cursorImg = image
     });
-    
+
     let cursorSize = 10;
-    
+
     if (cursorImg) {
         evaluationGraphCtx.drawImage(cursorImg, mouseX - cursorSize / 2, mouseY - cursorSize / 2, cursorSize, cursorSize);
     }
-    
+
 
 }
 
