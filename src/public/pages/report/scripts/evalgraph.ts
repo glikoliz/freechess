@@ -10,7 +10,7 @@ let cursorImg: HTMLImageElement | null = null;
 async function drawEvaluationGraph() {
     const graphHeight = 80;
     const desiredGraphWidth = 350;
-    const maxEval = 1100; // Max centipawn value seems to be 1100, or max centipawn loss of -1100
+    const maxEval = 500; // Looks good with maxEval 500, that's a range between -5.0 and 5.0 eval score
     const cpPerPixel = maxEval / (graphHeight / 2);
     let positions = reportResults?.positions!;
     let baseBarWidth = Math.floor(desiredGraphWidth / positions.length);
@@ -23,65 +23,42 @@ async function drawEvaluationGraph() {
     topLines = positions.map(position => position?.topLines?.find(line => line.id == 1));
 
     let cumulativeWidth = 0;
+    let points = [];
+
 
     for (let i = 0; i < topLines.length; i++) {
         let topLine = topLines[i];
         let evaluation = topLine?.evaluation;
         let currentBarWidth = baseBarWidth + Math.floor((i + 1) * extraWidthPerBar) - Math.floor(i * extraWidthPerBar);
-        let classification = positions[i]?.classification;
-        let classificationColour = classification ? classificationColours[classification] : "#4caf50";
-
-        if (i === hoverIndex) {
-            evaluationGraphCtx.fillStyle = "#555555";
-        } else {
-            evaluationGraphCtx.fillStyle = "#000000";
-        }
-        evaluationGraphCtx.fillRect(cumulativeWidth, 0, currentBarWidth, graphHeight);
-        cumulativeWidth += currentBarWidth;
-
-        if (evaluation?.type === "mate") {
-            let moveColour = getMovedPlayerByPosition(positions[i].fen);
-
-            if (evaluation.value === 0) {
-                evaluationGraphCtx.fillStyle = moveColour === "white" ? "#ffffff" : "#000000";
-            } else {
-                if (i === currentMoveIndex && i === hoverIndex) {
-                    evaluationGraphCtx.fillStyle = "#4cef50";
-                } else if (i === currentMoveIndex) {
-                    evaluationGraphCtx.fillStyle = "#8cef90";
-                } else if (i === hoverIndex) {
-                    evaluationGraphCtx.fillStyle = evaluation.value >= 0 ? "#bbbbbb" : "#555555";
-                } else {
-                    evaluationGraphCtx.fillStyle = evaluation.value >= 0 ? "#ffffff" : "#000000";
-                }
-            }
-            evaluationGraphCtx.fillRect(cumulativeWidth - currentBarWidth, 0, currentBarWidth, graphHeight);
-        } else if (evaluation?.type == "cp") {
-            let height = graphHeight / 2 + evaluation?.value / cpPerPixel;
-             if (i === hoverIndex) {
-                evaluationGraphCtx.fillStyle = "#dddddd";
-            } else {
-                evaluationGraphCtx.fillStyle = "#ffffff";
-            }
-
-            if (!boardFlipped) {
-                evaluationGraphCtx.fillRect(cumulativeWidth - currentBarWidth, graphHeight - height, currentBarWidth, height);
-            } else {
-                evaluationGraphCtx.fillRect(cumulativeWidth - currentBarWidth, 0, currentBarWidth, height);
-            }
+    
+        let pointX = cumulativeWidth + currentBarWidth / 2;
+        let pointY = graphHeight / 2;
+    
+        if (evaluation?.type === "cp") {
+            pointY = graphHeight / 2 - evaluation.value / cpPerPixel;
+        } else if (evaluation?.type === "mate") {
+            pointY = evaluation.value >= 0 ? 0 : graphHeight;
         }
         
-        if (i === currentMoveIndex && i === hoverIndex) {
-            evaluationGraphCtx.fillStyle = classification ? getSemiTransparentColor(classificationColour, 0.8) : getSemiTransparentColor("#000000", 0.2);
-            evaluationGraphCtx.fillRect(cumulativeWidth - currentBarWidth, 0, currentBarWidth, graphHeight);
-        } else if (i === currentMoveIndex) {
-            evaluationGraphCtx.fillStyle = classification ? getSemiTransparentColor(classificationColour, 0.5) : getSemiTransparentColor("#000000", 0.2);
-            evaluationGraphCtx.fillRect(cumulativeWidth - currentBarWidth, 0, currentBarWidth, graphHeight);
-        } else if (i === hoverIndex) {
-            evaluationGraphCtx.fillStyle = classification ? getSemiTransparentColor(classificationColour, 0.5) : getSemiTransparentColor("#000000", 0.2);
-            evaluationGraphCtx.fillRect(cumulativeWidth - currentBarWidth, 0, currentBarWidth, graphHeight);
-        }
+        points.push({x: pointX, y: pointY});
+    
+        cumulativeWidth += currentBarWidth;
     }
+    
+    // Draw the filled area below the points
+    evaluationGraphCtx.beginPath();
+    evaluationGraphCtx.moveTo(0, graphHeight);
+    evaluationGraphCtx.lineTo(0, points[0].y);
+    evaluationGraphCtx.lineTo(points[0].x, points[0].y);
+    points.forEach(point => {
+        evaluationGraphCtx.lineTo(point.x, point.y);
+    });
+    evaluationGraphCtx.lineTo(points[points.length - 1].x, graphHeight);
+    evaluationGraphCtx.closePath();
+    evaluationGraphCtx.fillStyle = "#ffffff";
+    evaluationGraphCtx.fill();
+    console.log("hello world!")
+    
     // Draw points on top of bars
     cumulativeWidth = 0;
     for (let i = 0; i < topLines.length; i++) {
@@ -93,7 +70,7 @@ async function drawEvaluationGraph() {
         let pointX = cumulativeWidth + currentBarWidth / 2;
         let pointY;
         if (evaluation?.type === "cp") {
-            if(classification == "great" || classification == "brilliant" || classification == "blunder")
+            if(classification === "great" || classification === "brilliant" || classification === "blunder")
                 {
                     let height = graphHeight / 2 + evaluation?.value / cpPerPixel;
                     pointY = boardFlipped ? height : graphHeight - height;
@@ -101,7 +78,7 @@ async function drawEvaluationGraph() {
                     // Draw the point
                     evaluationGraphCtx.fillStyle = classificationColour;
                     evaluationGraphCtx.beginPath();
-                    evaluationGraphCtx.arc(pointX, pointY, 3, 0, 2 * Math.PI); // Draw a circle with radius 3
+                    evaluationGraphCtx.arc(pointX, pointY, 4, 0, 2 * Math.PI); // Draw a circle with radius 4
                     evaluationGraphCtx.fill();
                 }
         }
@@ -114,6 +91,8 @@ async function drawEvaluationGraph() {
 
         cumulativeWidth += currentBarWidth;
     }
+
+
     // Draw the midline
     evaluationGraphCtx.beginPath();
     evaluationGraphCtx.moveTo(0, graphHeight / 2);
@@ -121,17 +100,6 @@ async function drawEvaluationGraph() {
     evaluationGraphCtx.lineWidth = 1;
     evaluationGraphCtx.strokeStyle = '#ff5555';
     evaluationGraphCtx.stroke();
-
-
-
-
-
-    // Fill any remaining pixels at the right edge
-    if (cumulativeWidth < desiredGraphWidth) {
-        const remainingWidth = desiredGraphWidth - cumulativeWidth;
-        evaluationGraphCtx.fillStyle = "#000000";
-        evaluationGraphCtx.fillRect(cumulativeWidth, 0, remainingWidth, graphHeight);
-    }
 
     // Draw classification icon for hovered move
     cumulativeWidth = 0;
