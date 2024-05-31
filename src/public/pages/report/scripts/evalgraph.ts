@@ -82,6 +82,49 @@ async function drawEvaluationGraph() {
             evaluationGraphCtx.fillRect(cumulativeWidth - currentBarWidth, 0, currentBarWidth, graphHeight);
         }
     }
+    // Draw points on top of bars
+    cumulativeWidth = 0;
+    for (let i = 0; i < topLines.length; i++) {
+        let topLine = topLines[i];
+        let evaluation = topLine?.evaluation;
+        let currentBarWidth = baseBarWidth + Math.floor((i + 1) * extraWidthPerBar) - Math.floor(i * extraWidthPerBar);
+        let classification = positions[i]?.classification;
+        let classificationColour = classification ? classificationColours[classification] : "#000000"; // Default to black
+        let pointX = cumulativeWidth + currentBarWidth / 2;
+        let pointY;
+        if (evaluation?.type === "cp") {
+            if(classification == "great" || classification == "brilliant" || classification == "blunder")
+                {
+                    let height = graphHeight / 2 + evaluation?.value / cpPerPixel;
+                    pointY = boardFlipped ? height : graphHeight - height;
+
+                    // Draw the point
+                    evaluationGraphCtx.fillStyle = classificationColour;
+                    evaluationGraphCtx.beginPath();
+                    evaluationGraphCtx.arc(pointX, pointY, 3, 0, 2 * Math.PI); // Draw a circle with radius 3
+                    evaluationGraphCtx.fill();
+                }
+        }
+
+        if (i === currentMoveIndex || i === hoverIndex) {
+            let highlightColor = getSemiTransparentColor(classificationColour, 0.5);
+            evaluationGraphCtx.fillStyle = highlightColor;
+            evaluationGraphCtx.fillRect(cumulativeWidth, 0, currentBarWidth, graphHeight);
+        }
+
+        cumulativeWidth += currentBarWidth;
+    }
+    // Draw the midline
+    evaluationGraphCtx.beginPath();
+    evaluationGraphCtx.moveTo(0, graphHeight / 2);
+    evaluationGraphCtx.lineTo(desiredGraphWidth, graphHeight / 2);
+    evaluationGraphCtx.lineWidth = 1;
+    evaluationGraphCtx.strokeStyle = '#ff5555';
+    evaluationGraphCtx.stroke();
+
+
+
+
 
     // Fill any remaining pixels at the right edge
     if (cumulativeWidth < desiredGraphWidth) {
@@ -89,14 +132,6 @@ async function drawEvaluationGraph() {
         evaluationGraphCtx.fillStyle = "#000000";
         evaluationGraphCtx.fillRect(cumulativeWidth, 0, remainingWidth, graphHeight);
     }
-    
-    // Draw midline
-    evaluationGraphCtx.beginPath();
-    evaluationGraphCtx.moveTo(0, graphHeight / 2);
-    evaluationGraphCtx.lineTo(desiredGraphWidth, graphHeight / 2);
-    evaluationGraphCtx.lineWidth = 1;
-    evaluationGraphCtx.strokeStyle = '#ff5555';
-    evaluationGraphCtx.stroke();
 
     // Draw classification icon for hovered move
     cumulativeWidth = 0;
